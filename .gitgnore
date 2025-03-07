@@ -1,0 +1,19 @@
+# Fichiers Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+
+# Secrets et Clés API
+.env
+
+# Logs
+logs/
+*.log
+
+# Dépendances
+venv/
+*.egg-info/
+pip-wheel-metadata/
