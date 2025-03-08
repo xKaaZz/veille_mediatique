@@ -47,9 +47,8 @@ def summarize_text(text):
         f"{text}"
     )
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Tu es un expert en synthèse d'actualités. Résume ces articles bullets points de bullet points afin d'avoir une synthèse complète"},
             {"role": "user", "content": prompt}
         ],
         temperature=0.2
@@ -80,7 +79,7 @@ def generate_cluster_label(titles):
     )
 
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=12,  # Légèrement augmenté pour éviter les raccourcis
         temperature=0

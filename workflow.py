@@ -10,12 +10,14 @@ from rss_scraper import RSSScraper
 from embedding_generator import EmbeddingGenerator
 from search_embeddings import SearchEmbeddings
 from news_processing_utils import summarize_cluster, generate_cluster_label
+from mongo_docstore import MongoDBDocStore
 from datetime import date
 import numpy as np
 import os
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
 from dotenv import load_dotenv
+from llama_index.utils.workflow import draw_all_possible_flows
 
 load_dotenv()
 
@@ -41,12 +43,18 @@ class NewsProcessingWorkflow(Workflow):
         super().__init__(timeout=60, verbose=True)
         self.db_manager = DatabaseManager()
         self.scraper = RSSScraper(self.db_manager)
-        self.embedder = EmbeddingGenerator(self.db_manager, os.getenv("OPENAI_API_KEY"))
+        self.docstore = MongoDBDocStore(
+            uri=os.getenv("MONGO_URI"),
+            db_name=os.getenv("MONGO_DB_NAME"),
+            collection_name=os.getenv("MONGO_COLLECTION")
+        )
+        self.embedder = EmbeddingGenerator(self.db_manager, self.docstore, os.getenv("OPENAI_API_KEY"))
+        
 
     @step
     async def scrape_articles(self, ev: StartEvent) -> ArticlesScraped:
         print("📡 Scraping des flux RSS en cours...")
-        
+
         feeds_with_categories = self.scraper.get_rss_feeds_with_categories()
         if not feeds_with_categories:
             print("❌ Aucun flux RSS enregistré en base !")
@@ -56,7 +64,7 @@ class NewsProcessingWorkflow(Workflow):
             print(f"📡 Scraping {feed_url} (Catégorie : {category})")
             self.scraper.scrape_feed(feed_url, category)
 
-        articles = self.db_manager.get_articles_of_day(date.today())
+        articles = self.docstore.get_all_documents()
         print(f"📌 Articles à indexer : {len(articles)}")
         return ArticlesScraped(articles=articles)
 
@@ -66,18 +74,18 @@ class NewsProcessingWorkflow(Workflow):
 
         articles_to_update = [
             article for article in ev.articles 
-            if not article.get("content_vector")  # ✅ Évite les `None`
+            if not article.get("content_vector")
         ]
-        
+
         print(f"📌 Articles nécessitant un embedding : {len(articles_to_update)}")
-        
+
         for article in articles_to_update:
             text = f"{article['title']} {article.get('content', '')}"
             embedding = self.embedder.generate_embedding(text)
             if embedding:
-                self.db_manager.update_embedding(article["link"], embedding)
+                self.docstore.update_document(article["_id"], {"content_vector": embedding})
 
-        updated_articles = self.db_manager.get_articles_of_day(date.today())
+        updated_articles = self.docstore.get_all_documents()
         return ArticlesIndexed(articles=updated_articles)
 
     @step
@@ -110,7 +118,7 @@ class NewsProcessingWorkflow(Workflow):
                 continue
 
             # 🔥 Clustering avec DBSCAN (on garde un eps raisonnable)
-            clustering = DBSCAN(eps=0.15, min_samples=3, metric='cosine').fit(embeddings)
+            clustering = DBSCAN(eps=0.2, min_samples=4, metric='cosine').fit(embeddings)
 
             category_clusters = defaultdict(list)
             isolated_articles = []
@@ -143,11 +151,15 @@ class NewsProcessingWorkflow(Workflow):
                         best_distance = avg_distance
                         best_category = other_category
 
-                if best_category and best_distance < 0.3:
+                if best_category and best_distance < 0.2:
                     print(f"🔄 Changement de catégorie : {article['title']} passe de {category} à {best_category}")
+                    if "0" not in updated_clusters[best_category]:
+                        updated_clusters[best_category]["0"] = []  # 🛠️ Initialisation correcte
                     updated_clusters[best_category]["0"].append(article)
                 else:
                     print(f"❌ {article['title']} reste dans {category}.")
+                    if "0" not in updated_clusters[category]:  
+                        updated_clusters[category]["0"] = []  # 🛠️ Initialisation correcte
                     updated_clusters[category]["0"].append(article)
 
         print(f"✅ Vérification des catégories terminée avec {len(updated_clusters)} catégories mises à jour.")
@@ -200,3 +212,4 @@ class NewsProcessingWorkflow(Workflow):
 
 # Création du workflow
 news_workflow = NewsProcessingWorkflow()
+draw_all_possible_flows(NewsProcessingWorkflow, filename="NewsProcessingWorkflow.html")

@@ -2,15 +2,9 @@ import openai
 import numpy as np
 
 class EmbeddingGenerator:
-    """Classe pour générer et stocker des embeddings avec OpenAI."""
-    
-    def __init__(self, db_manager, api_key):
-        """
-        Initialise le générateur d'embeddings avec une connexion à MongoDB et une clé API OpenAI.
-        :param db_manager: Instance de DatabaseManager.
-        :param api_key: Clé API OpenAI.
-        """
+    def __init__(self, db_manager, docstore, api_key):
         self.db_manager = db_manager
+        self.docstore = docstore
         openai.api_key = api_key
 
     def generate_embedding(self, text):
@@ -24,3 +18,24 @@ class EmbeddingGenerator:
         except Exception as e:
             print(f"❌ Erreur OpenAI : {e}")
             return None
+
+    def update_embeddings(self):
+        """Met à jour les articles en ajoutant des embeddings si absents."""
+        articles = self.docstore.get_all_documents()
+
+        for article in articles:
+            if "content_vector" in article and article["content_vector"]:
+                print(f"⚠️ Embedding déjà existant pour {article['title']}, SKIP")
+                continue  
+
+            text = f"{article['title']} {article.get('content', '')}"
+            embedding = self.generate_embedding(text)
+
+            if embedding:
+                self.docstore.update_document(
+                    doc_id=article["_id"], 
+                    updates={"content_vector": embedding}
+                )
+                print(f"✅ Embedding ajouté pour {article['title']}")
+            else:
+                print(f"❌ Échec de l'embedding pour {article['title']}")
