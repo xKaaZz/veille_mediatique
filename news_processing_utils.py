@@ -7,9 +7,12 @@ import tiktoken
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID =  os.getenv("TELEGRAM_ID")
 client = OpenAI()
 tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
 
@@ -87,4 +90,14 @@ def generate_cluster_label(titles):
 
     return response.choices[0].message.content.strip()
 
+def send_telegram_message(text):
+    """Envoie un message via Telegram."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    params = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
+    response = requests.post(url, params=params)
+    
+    if response.status_code == 200:
+        print("✅ Message envoyé avec succès sur Telegram.")
+    else:
+        print(f"❌ Erreur lors de l'envoi du message : {response.text}")
 

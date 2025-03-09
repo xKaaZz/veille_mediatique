@@ -9,7 +9,7 @@ from database_manager import DatabaseManager
 from rss_scraper import RSSScraper
 from embedding_generator import EmbeddingGenerator
 from search_embeddings import SearchEmbeddings
-from news_processing_utils import summarize_cluster, generate_cluster_label
+from news_processing_utils import summarize_cluster, generate_cluster_label, send_telegram_message
 from mongo_docstore import MongoDBDocStore
 from datetime import date
 import numpy as np
@@ -202,12 +202,32 @@ class NewsProcessingWorkflow(Workflow):
     async def finalize_workflow(self, ev: ArticlesSummarized) -> StopEvent:
         print("📅 Synthèse des faits marquants du jour par thème :")
 
+        def split_message(text, max_length=4096):
+            """Divise un texte en morceaux compatibles avec la limite de caractères de Telegram."""
+            messages = []
+            while len(text) > max_length:
+                split_index = text[:max_length].rfind('\n')  # Couper proprement à la fin d'une ligne si possible
+                if split_index == -1:
+                    split_index = max_length  # Au pire, couper au maximum autorisé
+                messages.append(text[:split_index])
+                text = text[split_index:].strip()
+            if text:
+                messages.append(text)
+            return messages
+
         for cluster_name, summary in ev.summaries.items():
             category, label = cluster_name.split(" - ", 1)
-            print(f"\n🌍 {category.capitalize()} : {label}")
-            print(summary)
+            message = f"\n🌍 {category.capitalize()} : {label}\n{summary}"
+
+            for chunk in split_message(message):
+                try:
+                    # Utilise ton code d'envoi de message ici (ajuste en fonction de ton implémentation Telegram)
+                    send_telegram_message(chunk)
+                except Exception as e:
+                    print(f"❌ Erreur lors de l'envoi du message : {e}")
 
         return StopEvent(result="✅ Workflow terminé avec succès !")
+
 
 
 # Création du workflow
