@@ -241,4 +241,4 @@ class NewsProcessingWorkflow(Workflow):
 
 # Création du workflow
 news_workflow = NewsProcessingWorkflow()
-draw_all_possible_flows(NewsProcessingWorkflow, filename="NewsProcessingWorkflow.html")
+#draw_all_possible_flows(NewsProcessingWorkflow, filename="NewsProcessingWorkflow.html")
