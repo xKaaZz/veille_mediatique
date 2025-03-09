@@ -18,6 +18,7 @@ from sklearn.cluster import DBSCAN
 from collections import defaultdict
 from dotenv import load_dotenv
 from llama_index.utils.workflow import draw_all_possible_flows
+from datetime import date, timedelta
 
 load_dotenv()
 
@@ -39,7 +40,7 @@ class ArticlesSummarized(Event):
 
 # Classe principale du workflow
 class NewsProcessingWorkflow(Workflow):
-    def __init__(self):
+    def __init__(self, duration=1):  
         super().__init__(timeout=60, verbose=True)
         self.db_manager = DatabaseManager()
         self.scraper = RSSScraper(self.db_manager)
@@ -49,6 +50,7 @@ class NewsProcessingWorkflow(Workflow):
             collection_name=os.getenv("MONGO_COLLECTION")
         )
         self.embedder = EmbeddingGenerator(self.db_manager, self.docstore, os.getenv("OPENAI_API_KEY"))
+        self.duration = duration  
         
 
     @step
@@ -90,9 +92,16 @@ class NewsProcessingWorkflow(Workflow):
 
     @step
     async def refine_article_categories(self, ev: ArticlesIndexed) -> ArticlesClustered:
-        print("🧩 Vérification et ajustement des catégories des articles...")
+        print(f"🧩 Vérification et ajustement des catégories des articles publiés ces {self.duration} derniers jours...")
 
-        articles = self.db_manager.get_articles_of_day(date.today())
+        # Calcul de la date de début en fonction de la durée
+        start_date = date.today() - timedelta(days=self.duration)
+
+        # Récupération des articles selon cette période
+        articles = self.db_manager.get_articles_since(start_date)
+
+        # Log pour vérification
+        print(f"📅 Nombre d'articles récupérés : {len(articles)}")
         categories = defaultdict(list)
 
         for article in articles:

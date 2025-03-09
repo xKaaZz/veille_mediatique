@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from pymongo import MongoClient, TEXT
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 load_dotenv()
 
@@ -41,7 +41,7 @@ class DatabaseManager:
         """Récupère tous les articles de la collection MongoDB."""
         return list(self.collection.find({}, {"_id": 0}))  # Exclure l'ID MongoDB
     
-    from datetime import datetime, timedelta
+    
 
     def get_articles_of_day(db_manager, target_date):
         start = datetime.combine(target_date, datetime.min.time())
@@ -54,6 +54,25 @@ class DatabaseManager:
         print(f"📌 Articles récupérés pour {target_date} : {len(articles)}")
         
         return articles
+    
+    from datetime import datetime
+
+    def get_articles_since(db_manager, duration):
+        """Récupère les articles publiés depuis une période définie (en jours)."""
+        
+        # Détermination de la date de début et de fin
+        start_date = datetime.combine(date.today() - timedelta(days=duration), datetime.min.time())
+        end_date = datetime.combine(date.today(), datetime.min.time())
+        
+        # Récupération des articles dans l'intervalle spécifié
+        articles = list(db_manager.collection.find({
+            "pub_date": {"$gte": start_date, "$lt": end_date}  # 🔥 Filtrage par plage de dates
+        }, {"_id": 0}))
+
+        print(f"📌 Articles récupérés depuis {start_date.strftime('%Y-%m-%d')} : {len(articles)}")
+
+        return articles
+
 
     
     def update_embedding(self, link, embedding):

@@ -1,15 +1,17 @@
 import os
+import argparse  # ➤ Ajout pour gérer les arguments
 from dotenv import load_dotenv
 from database_manager import DatabaseManager
 from rss_scraper import RSSScraper
 from embedding_generator import EmbeddingGenerator
 import asyncio
-from workflow import news_workflow
+from workflow import NewsProcessingWorkflow  # ➤ Import mis à jour pour utiliser la classe avec durée
 
 load_dotenv()
 
-async def main():
-    """Menu interactif"""
+async def main(duration):
+    """
+    # Ancien menu interactif (désactivé temporairement)
     db_manager = DatabaseManager()
 
     while True:
@@ -37,7 +39,7 @@ async def main():
 
         elif choice == "4":
             print("🚀 Exécution du workflow...")
-            result = await news_workflow.run()
+            result = await news_workflow.run(duration=duration, timeout=600)
             print(result)
 
         elif choice == "5":
@@ -47,6 +49,17 @@ async def main():
 
         else:
             print("❌ Option invalide, réessayez.")
+    """
+
+    # Nouvelle version : Lancement direct du workflow avec durée personnalisée
+    print(f"🚀 Exécution du workflow pour les {duration} derniers jours...")
+    news_workflow = NewsProcessingWorkflow(duration=duration)  # ➤ Initialisation avec durée
+    result = await news_workflow.run(timeout=600)
+    print(result)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Lancement du workflow avec une période personnalisée")
+    parser.add_argument("--duration", type=int, default=1, help="Nombre de jours à analyser (ex: 1, 3, 7...)")
+    args = parser.parse_args()
+
+    asyncio.run(main(args.duration))
