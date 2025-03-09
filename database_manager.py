@@ -57,20 +57,22 @@ class DatabaseManager:
     
     from datetime import datetime
 
-    def get_articles_since(db_manager, duration):
+    def get_articles_since(self, duration):
         """Récupère les articles publiés depuis une période définie (en jours)."""
         
-        # Détermination de la date de début et de fin
+        # Vérifie que `duration` est bien un entier (sécurisation)
+        if not isinstance(duration, int):
+            raise ValueError("❌ Erreur: `duration` doit être un entier représentant le nombre de jours.")
+
+        # Calcul correct de la plage de dates
         start_date = datetime.combine(date.today() - timedelta(days=duration), datetime.min.time())
         end_date = datetime.combine(date.today(), datetime.min.time())
         
-        # Récupération des articles dans l'intervalle spécifié
-        articles = list(db_manager.collection.find({
-            "pub_date": {"$gte": start_date, "$lt": end_date}  # 🔥 Filtrage par plage de dates
+        articles = list(self.collection.find({
+            "pub_date": {"$gte": start_date, "$lt": end_date}
         }, {"_id": 0}))
 
         print(f"📌 Articles récupérés depuis {start_date.strftime('%Y-%m-%d')} : {len(articles)}")
-
         return articles
 
 
