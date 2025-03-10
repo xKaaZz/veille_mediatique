@@ -6,6 +6,7 @@ from rss_scraper import RSSScraper
 from embedding_generator import EmbeddingGenerator
 import asyncio
 from workflow import NewsProcessingWorkflow  # ➤ Import mis à jour pour utiliser la classe avec durée
+from workflow import get_news_workflow
 
 load_dotenv()
 
@@ -53,7 +54,7 @@ async def main(duration):
 
     # Nouvelle version : Lancement direct du workflow avec durée personnalisée
     print(f"🚀 Exécution du workflow pour les {duration} derniers jours...")
-    news_workflow = NewsProcessingWorkflow(duration=duration)  # ➤ Initialisation avec durée
+    news_workflow = get_news_workflow(duration=duration)
     result = await news_workflow.run(timeout=600)
     print(result)
 

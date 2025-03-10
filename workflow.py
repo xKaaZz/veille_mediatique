@@ -40,7 +40,7 @@ class ArticlesSummarized(Event):
 
 # Classe principale du workflow
 class NewsProcessingWorkflow(Workflow):
-    def __init__(self, duration):  
+    def __init__(self, duration=1):  
         self.db_manager = DatabaseManager()
         self.scraper = RSSScraper(self.db_manager)
         self.docstore = MongoDBDocStore(
@@ -236,8 +236,8 @@ class NewsProcessingWorkflow(Workflow):
 
         return StopEvent(result="✅ Workflow terminé avec succès !")
 
-
-
 # Création du workflow
-news_workflow = NewsProcessingWorkflow()
+def get_news_workflow(duration=1):
+    return NewsProcessingWorkflow(duration=duration)
+
 #draw_all_possible_flows(NewsProcessingWorkflow, filename="NewsProcessingWorkflow.html")
