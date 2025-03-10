@@ -94,11 +94,8 @@ class NewsProcessingWorkflow(Workflow):
     async def refine_article_categories(self, ev: ArticlesIndexed) -> ArticlesClustered:
         print(f"🧩 Vérification et ajustement des catégories des articles publiés ces {self.duration} derniers jours...")
 
-        # Calcul de la date de début en fonction de la durée
-        start_date = date.today() - timedelta(days=self.duration)
-
         # Récupération des articles selon cette période
-        articles = self.db_manager.get_articles_since(start_date)
+        articles = self.db_manager.get_articles_since(self.duration)
 
         # Log pour vérification
         print(f"📅 Nombre d'articles récupérés : {len(articles)}")
