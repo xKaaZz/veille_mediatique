@@ -40,8 +40,7 @@ class ArticlesSummarized(Event):
 
 # Classe principale du workflow
 class NewsProcessingWorkflow(Workflow):
-    def __init__(self, duration=1):  
-        super().__init__(timeout=60, verbose=True)
+    def __init__(self, duration):  
         self.db_manager = DatabaseManager()
         self.scraper = RSSScraper(self.db_manager)
         self.docstore = MongoDBDocStore(
