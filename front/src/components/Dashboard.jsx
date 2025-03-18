@@ -4,15 +4,15 @@ import { Button } from "./ui/Button";
 
 export default function Dashboard({ onGenerateDailySummary }) {
     return (
-        <div className="p-6 space-y-6">
-            <Card>
-                <CardContent className="p-4 space-y-4">
-                    <h2 className="text-xl font-semibold">Résumé Quotidien</h2>
+        <Card className="text-center">
+            <CardContent className="p-4 space-y-4">
+                <h2 className="text-xl font-semibold text-center">Résumé Quotidien</h2>
+                <div className="flex justify-center">
                     <Button onClick={onGenerateDailySummary}>
                         ➡️ Générer le résumé des dernières 24h
                     </Button>
-                </CardContent>
-            </Card>
-        </div>
+                </div>
+            </CardContent>
+        </Card>
     );
 }

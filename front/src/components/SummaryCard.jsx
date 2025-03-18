@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { Card, CardContent } from "./ui/Card";
 import { Button } from "./ui/Button";
-import { DatePicker } from "./ui/DatePicker";
 
 export default function SummaryCard({ startDate, endDate, setStartDate, setEndDate, onGenerate }) {
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState("");
 
     const handleGenerateSummary = () => {
-        setMessage(""); // Réinitialise le message
+        setMessage("");
         if (!startDate || !endDate) {
             setMessage("❌ Veuillez sélectionner les deux dates.");
             return;
@@ -19,41 +18,42 @@ export default function SummaryCard({ startDate, endDate, setStartDate, setEndDa
             return;
         }
 
-        if (new Date(startDate) > new Date()) {
-            setMessage("❌ La date de début ne peut pas être dans le futur.");
-            return;
-        }
-
-        setIsLoading(true); // Démarrage du spinner
+        setIsLoading(true);
         setTimeout(() => {
-            setIsLoading(false); // Fin du spinner
+            setIsLoading(false);
             setMessage("✅ Résumé généré avec succès !");
         }, 2000);
     };
 
     return (
-        <Card>
+        <Card className="text-center">
             <CardContent className="p-4 space-y-4">
-                <h2 className="text-xl font-semibold">Résumé Personnalisé</h2>
-                <div className="flex gap-4">
-                    <DatePicker 
-                        placeholder="Date de début" 
-                        value={startDate} 
-                        onChange={setStartDate} 
+                <h2 className="text-xl font-semibold text-center">Résumé Personnalisé</h2>
+
+                {/* Champs de date */}
+                <div className="flex flex-col sm:flex-row gap-4">
+                    <input
+                        type="date"
+                        className="border border-gray-300 p-3 rounded-md w-full"
+                        value={startDate || ""}
+                        onChange={(e) => setStartDate(e.target.value)}
                     />
-                    <DatePicker 
-                        placeholder="Date de fin" 
-                        value={endDate} 
-                        onChange={setEndDate} 
+                    <input
+                        type="date"
+                        className="border border-gray-300 p-3 rounded-md w-full"
+                        value={endDate || ""}
+                        onChange={(e) => setEndDate(e.target.value)}
                     />
                 </div>
 
-                <Button onClick={handleGenerateSummary} disabled={isLoading}>
-                    {isLoading ? "⏳ Chargement..." : "➡️ Générer le résumé"}
-                </Button>
+                <div className="flex justify-center">
+                    <Button onClick={handleGenerateSummary} className="w-64">
+                        {isLoading ? "⏳ Chargement..." : "➡️ Générer le résumé"}
+                    </Button>
+                </div>
 
                 {message && (
-                    <p className={`text-sm mt-2 ${message.startsWith("✅") ? "text-green-600" : "text-red-600"}`}>
+                    <p className={`message ${message.startsWith("✅") ? "success" : "error"}`}>
                         {message}
                     </p>
                 )}
