@@ -8,12 +8,16 @@ load_dotenv()
 class DatabaseManager:
     def __init__(self):
         """Initialisation de la connexion MongoDB"""
-        self.client = MongoClient(os.getenv("MONGO_URI"))
+        self.client = MongoClient(os.getenv("MONGODB_URI"))
         self.db = self.client[os.getenv("MONGO_DB_NAME")]
         self.collection = self.db[os.getenv("MONGO_COLLECTION")]
 
         # 🔍 Vérification des index existants
-        existing_indexes = self.collection.index_information()
+        try:
+            existing_indexes = self.collection.index_information()
+        except Exception as e:
+            print(f"⚠️ Erreur lors de la récupération des index : {e}")
+            existing_indexes = {}
         index_name = "content_text_title_text"
 
         if index_name in existing_indexes:

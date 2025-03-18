@@ -31,7 +31,7 @@ OPTIMIZED_SOURCES = [
 class SourceUpdater:
     def __init__(self):
         """Initialisation de la connexion MongoDB."""
-        self.client = MongoClient(os.getenv("MONGO_URI"))
+        self.client = MongoClient(os.getenv("MONGODB_URI"))
         self.db = self.client[os.getenv("MONGO_DB_NAME")]
 
     def insert_new_sources(self, sources):
