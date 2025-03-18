@@ -1,5 +1,3 @@
-# news_processing_utils.py
-
 import numpy as np
 from sklearn.cluster import DBSCAN
 import openai
@@ -12,12 +10,12 @@ import requests
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID =  os.getenv("TELEGRAM_ID")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_ID")
 client = OpenAI()
 tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
 
-def cluster_articles(articles, eps=0.3, min_samples=2):
-    embeddings = np.array([article["content_vector"] for article in articles])
+def cluster_articles(articles, eps=0.43, min_samples=2):
+    embeddings = np.array([article["embeddings"] for article in articles])
     clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine').fit(embeddings)
     
     clusters = {}
@@ -46,7 +44,7 @@ def chunk_text(texts, max_tokens=14000):
 
 def summarize_text(text):
     prompt = (
-        "Tu es un expert en synthèse d'actualités. Résume ces articles bullets points de bullet points afin d'avoir une synthèse complète :\n\n"
+        "Tu es un expert en synthèse d'actualités. Résume ces articles en bullet points pour une synthèse claire et concise :\n\n"
         f"{text}"
     )
     response = client.chat.completions.create(
@@ -59,7 +57,10 @@ def summarize_text(text):
     return response.choices[0].message.content.strip()
 
 def summarize_cluster(cluster_articles):
-    articles_texts = [f"{a['title']}. {a.get('content', '')}" for a in cluster_articles]
+    articles_texts = [f"{a['metadata']['title']}. {a.get('text', '')}" 
+                  for a in cluster_articles 
+                  if "metadata" in a and "title" in a["metadata"]]
+
 
     chunks = chunk_text(articles_texts)
 
@@ -84,7 +85,7 @@ def generate_cluster_label(titles):
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=12,  # Légèrement augmenté pour éviter les raccourcis
+        max_tokens=12,
         temperature=0
     )
 
@@ -100,4 +101,3 @@ def send_telegram_message(text):
         print("✅ Message envoyé avec succès sur Telegram.")
     else:
         print(f"❌ Erreur lors de l'envoi du message : {response.text}")
-

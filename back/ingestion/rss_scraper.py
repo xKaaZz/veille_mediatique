@@ -1,20 +1,49 @@
 from llama_index.core import Document, StorageContext
+from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import SentenceSplitter
+from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.vector_stores.mongodb import MongoDBAtlasVectorSearch
+from llama_index.storage.docstore.mongodb import MongoDocumentStore
+from llama_index.storage.index_store.mongodb import MongoIndexStore
 from datetime import datetime
 import feedparser
 import requests
 from bs4 import BeautifulSoup
 from newspaper import Article
 import time
+import os
 
 class RSSScraper:
     def __init__(self, db_manager):
-        """
-        Initialise le scraper avec une connexion à la BDD.
-        :param db_manager: Instance de DatabaseManager.
-        """
         self.db_manager = db_manager
-        self.failed_sources = set()  # 🔴 Liste des sources qui posent problème
+        self.failed_sources = set()
+
+        # Initialisation du pipeline
+        uri = os.getenv("MONGODB_URI")
+        db_name = os.getenv("MONGO_DB_NAME")
+        collection_name = os.getenv("MONGO_COLLECTION")
+
+        self.docstore = MongoDocumentStore.from_uri(uri=uri)
+        self.vector_store = MongoDBAtlasVectorSearch(
+            uri=uri, db_name=db_name, collection_name=collection_name, vector_index_name="vector_index"
+        )
+        self.index_store = MongoIndexStore.from_uri(uri=uri)
+
+        self.embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
+
+        self.pipeline = IngestionPipeline(
+            transformations=[
+                self.embed_model,
+                SentenceSplitter(chunk_size=500, chunk_overlap=0)
+            ],
+            vector_store=self.vector_store
+        )
+
+        self.storage_context = StorageContext.from_defaults(
+            docstore=self.docstore,
+            vector_store=self.vector_store,
+            index_store=self.index_store
+        )
 
     def get_rss_feeds_with_categories(self):
         """Récupère les flux RSS stockés dans MongoDB avec leur catégorie associée."""
@@ -22,7 +51,7 @@ class RSSScraper:
         return {feed["url"]: feed["category"] for feed in feeds}
 
     def scrape_feed(self, feed_url, category):
-        """Scrape un flux RSS et stocke en base MongoDB avec la catégorie correspondante."""
+        """Scrape un flux RSS et stocke les articles en base MongoDB avec leur catégorie."""
         if feed_url in self.failed_sources:
             print(f"🚫 Source bloquée, on la saute : {feed_url}")
             return
@@ -39,10 +68,9 @@ class RSSScraper:
             pub_date = datetime(*entry.published_parsed[:6]) if "published_parsed" in entry else datetime.now()
             description = entry.summary if "summary" in entry else None
 
-            existing_content = self.db_manager.collection.find_one({"link": link}, {"content": 1})
-
-            if existing_content and "content" in existing_content and existing_content["content"]:
-                print(f"🔵 Article déjà en base, pas de mise à jour : {title}")
+            existing_article = self.db_manager.collection.find_one({"metadata.link": link})
+            if existing_article:
+                print(f"🔵 Article déjà en base, pas de réinsertion : {title}")
                 continue
 
             # 🔥 Scraping du contenu complet
@@ -52,41 +80,36 @@ class RSSScraper:
                 print(f"❌ Impossible d'obtenir du contenu pour {link}. Article ignoré.")
                 continue
 
-            # 🔥 Insertion en base (sans toucher aux embeddings)
-            article_data = {
-                "title": title,
-                "link": link,
-                "pub_date": pub_date,
-                "description": description,
-                "content": content,
-                "source": feed_url,
-                "category": category
-            }
-
-            self.db_manager.collection.update_one(
-                {"link": link},
-                {"$set": article_data},
-                upsert=True
+            # 🔥 Envoi direct au vecteur store via le pipeline
+            document = Document(
+                text=content,
+                metadata={
+                    "link": link,
+                    "category": category,
+                    "description": description or "",
+                    "source": feed_url,
+                    "title": title,
+                    "pub_date": pub_date.isoformat()
+                }
             )
 
-            print(f"✅ Article ajouté/mis à jour : {title}")
+            self.pipeline.run(documents=[document])
 
-            # 🕒 Pause pour éviter le throttling
+            print(f"✅ Article ajouté/mis à jour : {title}")
             time.sleep(1)
 
     def scrape_full_article(self, url):
         """Scrape le contenu complet d'un article avec Newspaper3k et BeautifulSoup en fallback."""
         try:
-            # 🌍 On tente d'abord avec Newspaper3k
             article = Article(url)
             article.download()
             article.parse()
 
-            if article.text and len(article.text) > 100:  # 🔍 Vérifier qu'on a du contenu valide
+            if article.text and len(article.text) > 100:
                 return article.text.strip()
             else:
                 print(f"⚠️ Contenu trop court avec Newspaper3k, on tente BeautifulSoup : {url}")
-                self.failed_sources.add(url)  # 🔴 On garde en mémoire les sources problématiques
+                self.failed_sources.add(url)
                 return self.scrape_fallback(url)
 
         except Exception as e:
@@ -108,16 +131,16 @@ class RSSScraper:
                 return None
 
             soup = BeautifulSoup(response.content, "html.parser")
-            paragraphs = soup.find_all("p")  # 🔍 On récupère tous les paragraphes
+            paragraphs = soup.find_all("p")
 
             text = "\n".join([p.get_text() for p in paragraphs if p.get_text()])
-            return text.strip() if len(text) > 100 else None  # 🔍 Vérifier si le texte est utile
+            return text.strip() if len(text) > 100 else None
 
         except Exception as e:
             print(f"❌ Échec du fallback BeautifulSoup pour {url} : {e}")
             return None
 
-    def run(self):
+    def scrape_and_ingest(self):
         """Lance le scraping pour tous les flux RSS enregistrés avec leurs catégories."""
         feeds_with_categories = self.get_rss_feeds_with_categories()
         if not feeds_with_categories:

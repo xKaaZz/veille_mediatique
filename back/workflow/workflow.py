@@ -5,38 +5,22 @@ from llama_index.core.workflow import (
     step,
     Event,
 )
-from database_manager import DatabaseManager
-from rss_scraper import RSSScraper
-from embedding_generator import EmbeddingGenerator
-from search_embeddings import SearchEmbeddings
-from news_processing_utils import summarize_cluster, generate_cluster_label, send_telegram_message
-from pipeline import run_pipeline
-from mongo_docstore import MongoDBDocStore
-from datetime import date
+from back.core import DatabaseManager
+from back.ingestion.rss_scraper import RSSScraper
+from back.ingestion.pipeline import run_pipeline
+from back.core.news_processing_utils import summarize_cluster, generate_cluster_label, send_telegram_message
+from llama_index.storage.docstore.mongodb import MongoDocumentStore
+from datetime import date, timedelta
 import numpy as np
 import os
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
 from dotenv import load_dotenv
-from llama_index.utils.workflow import draw_all_possible_flows
-from datetime import date, timedelta
 
 load_dotenv()
 
-MAX_TOKENS = 8000  # Pour garder une marge de sécurité
-
-def truncate_text(text, max_tokens=MAX_TOKENS):
-    tokens = text.split()
-    if len(tokens) > max_tokens:
-        print(f"⚠️ Texte tronqué à {max_tokens} tokens")
-        return " ".join(tokens[:max_tokens])
-    return text
-
 # Définition des événements
-class ArticlesScraped(Event):
-    articles: list
-
-class ArticlesIndexed(Event):
+class ArticlesScrapedAndIndexed(Event):
     articles: list
 
 class ArticlesClustered(Event):
@@ -50,160 +34,74 @@ class ArticlesSummarized(Event):
 
 # Classe principale du workflow
 class NewsProcessingWorkflow(Workflow):
-    def __init__(self, duration=1):  
+    def __init__(self, duration=1):
         super().__init__(timeout=600, verbose=True)
         self.db_manager = DatabaseManager()
         self.scraper = RSSScraper(self.db_manager)
-        self.docstore = MongoDBDocStore(
-            uri=os.getenv("MONGODB_URI"),
-            db_name=os.getenv("MONGO_DB_NAME"),
-            collection_name=os.getenv("MONGO_COLLECTION")
+        self.docstore = MongoDocumentStore.from_uri(
+            uri=os.getenv("MONGODB_URI")
         )
-        self.embedder = EmbeddingGenerator(self.db_manager, self.docstore, os.getenv("OPENAI_API_KEY"))
-        self.duration = duration  
-        
+        self.duration = duration
 
     @step
-    async def scrape_articles(self, ev: StartEvent) -> ArticlesScraped:
+    async def scrape_articles(self, ev: StartEvent) -> ArticlesScrapedAndIndexed:
         print("📡 Scraping des flux RSS en cours...")
-
-        feeds_with_categories = self.scraper.get_rss_feeds_with_categories()
-        if not feeds_with_categories:
-            print("❌ Aucun flux RSS enregistré en base !")
-            return ArticlesScraped(articles=[])
-
-        for feed_url, category in feeds_with_categories.items():
-            print(f"📡 Scraping {feed_url} (Catégorie : {category})")
-            self.scraper.scrape_feed(feed_url, category)
-
-        articles = self.docstore.get_all_documents()
+        self.scraper.scrape_and_ingest()
+        articles = self.db_manager.get_articles()
         print(f"📌 Articles à indexer : {len(articles)}")
-        return ArticlesScraped(articles=articles)
+        return ArticlesScrapedAndIndexed(articles=articles)
 
     """@step
     async def index_articles(self, ev: ArticlesScraped) -> ArticlesIndexed:
-        print("🔍 Génération des embeddings...")
-
-        articles_to_update = [
-            article for article in ev.articles 
-            if not article.get("content_vector")
-        ]
-
-        print(f"📌 Articles nécessitant un embedding : {len(articles_to_update)}")
-
-        for article in articles_to_update:
-            title = article.get('title', 'Titre inconnu')
-            content = article.get('content', '')
-            text = truncate_text(f"{title} {content}")
-            embedding = self.embedder.generate_embedding(text)
-            if embedding:
-                self.docstore.update_document(article["_id"], {"content_vector": embedding})
-
-        updated_articles = self.docstore.get_all_documents()
-        return ArticlesIndexed(articles=updated_articles)
-    """
-
-    @step
-    async def index_articles(self, ev: ArticlesScraped) -> ArticlesIndexed:
-        print("🚀 Exécution du pipeline pour scraping + embeddings...")
+        print("🚀 Exécution du pipeline pour l'indexation avec embeddings...")
         run_pipeline()  # 🔥 Utilisation du pipeline centralisé
-
-        updated_articles = self.docstore.get_all_documents()
-        return ArticlesIndexed(articles=updated_articles)
-
+        articles = self.db_manager.get_articles()
+        return ArticlesIndexed(articles=articles)"""
+    
 
     @step
-    async def refine_article_categories(self, ev: ArticlesIndexed) -> ArticlesClustered:
-        print(f"🧩 Vérification et ajustement des catégories des articles publiés ces {self.duration} derniers jours...")
-
-        # Récupération des articles selon cette période
+    async def refine_article_categories(self, ev: ArticlesScrapedAndIndexed) -> ArticlesClustered:
+        print(f"🧩 Vérification et ajustement des catégories pour les {self.duration} derniers jours...")
         articles = self.db_manager.get_articles_since(self.duration)
-
-        # Log pour vérification
-        print(f"📅 Nombre d'articles récupérés : {len(articles)}")
+        
+        # 🔥 Pré-clustering manuel par catégorie
         categories = defaultdict(list)
-
         for article in articles:
-            category = article.get("category", "uncategorized")
+            category = article["metadata"].get("category", "uncategorized")
             categories[category].append(article)
-
+        
+        # 🔥 Affinage avec DBSCAN pour regrouper par sujets similaires
         updated_clusters = {}
-
         for category, cat_articles in categories.items():
-            print(f"📌 Analyse de la catégorie : {category} ({len(cat_articles)} articles)")
-
-            # Vérification qu'on a assez d'articles
-            if len(cat_articles) < 3:
-                print(f"⚠️ Pas assez d'articles dans {category} pour un clustering pertinent.")
-                updated_clusters[category] = {"0": cat_articles}  # ✅ Fixe le format de la structure
-                continue  
-
-            embeddings = np.array([article["content_vector"] for article in cat_articles if article.get("content_vector")])
-
-            if embeddings.shape[0] < 3:  # ✅ Vérification qu'on a assez d'embeddings valides
-                print(f"⚠️ Pas assez de données pour clusteriser {category}.")
+            if len(cat_articles) < 4:  # Pas assez d'articles pour clusteriser
                 updated_clusters[category] = {"0": cat_articles}
                 continue
+            
+            embeddings = np.array([a["metadata"].get("embedding") for a in cat_articles if "embedding" in a["metadata"]])
+            if len(embeddings) < 4:
+                updated_clusters[category] = {"0": cat_articles}  # Trop peu d'embeddings valides
+                continue
 
-            # 🔥 Clustering avec DBSCAN (on garde un eps raisonnable)
             clustering = DBSCAN(eps=0.2, min_samples=4, metric='cosine').fit(embeddings)
-
             category_clusters = defaultdict(list)
-            isolated_articles = []
-
+            
             for label, article in zip(clustering.labels_, cat_articles):
-                if label == -1:
-                    isolated_articles.append(article)
-                else:
-                    category_clusters[label].append(article)
+                cluster_id = str(label) if label != -1 else "-1"  # -1 = bruit
+                category_clusters[cluster_id].append(article)
 
-            updated_clusters[category] = {str(label): articles for label, articles in category_clusters.items()}
+            updated_clusters[category] = category_clusters
 
-            # 📌 Vérification des articles isolés
-            for article in isolated_articles:
-                best_category = None
-                best_distance = float("inf")
-
-                for other_category, other_articles in categories.items():
-                    if other_category == category or len(other_articles) < 3:
-                        continue
-                    
-                    other_embeddings = np.array([a["content_vector"] for a in other_articles if a.get("content_vector")])
-
-                    if other_embeddings.shape[0] < 3:
-                        continue
-
-                    avg_distance = np.mean([np.linalg.norm(article["content_vector"] - emb) for emb in other_embeddings])
-
-                    if avg_distance < best_distance:
-                        best_distance = avg_distance
-                        best_category = other_category
-
-                if best_category and best_distance < 0.2:
-                    print(f"🔄 Changement de catégorie : {article['title']} passe de {category} à {best_category}")
-                    if "0" not in updated_clusters[best_category]:
-                        updated_clusters[best_category]["0"] = []  # 🛠️ Initialisation correcte
-                    updated_clusters[best_category]["0"].append(article)
-                else:
-                    print(f"❌ {article['title']} reste dans {category}.")
-                    if "0" not in updated_clusters[category]:  
-                        updated_clusters[category]["0"] = []  # 🛠️ Initialisation correcte
-                    updated_clusters[category]["0"].append(article)
-
-        print(f"✅ Vérification des catégories terminée avec {len(updated_clusters)} catégories mises à jour.")
         return ArticlesClustered(clusters=updated_clusters)
 
     @step
     async def label_clusters(self, ev: ArticlesClustered) -> ClustersLabeled:
         print("🏷️ Génération des labels pour chaque cluster...")
-
         labeled_clusters = {}
         
         for category, category_clusters in ev.clusters.items():
             for cluster_id, articles in category_clusters.items():
-                titles = [article["title"] for article in articles]
+                titles = [article["metadata"]["title"] for article in articles if "metadata" in article and "title" in article["metadata"]]
                 label = generate_cluster_label(titles)
-                
                 labeled_clusters[(category, cluster_id)] = {
                     "label": label,
                     "category": category,
@@ -216,48 +114,23 @@ class NewsProcessingWorkflow(Workflow):
     @step
     async def summarize_clusters(self, ev: ClustersLabeled) -> ArticlesSummarized:
         print("📝 Génération des résumés pour chaque cluster...")
-
         summaries = {}
         for (category, cluster_id), cluster_info in ev.labeled_clusters.items():
             label = cluster_info["label"]
             articles = cluster_info["articles"]
             summary = summarize_cluster(articles)
             summaries[f"{category} - {label}"] = summary
-
         return ArticlesSummarized(summaries=summaries)
 
     @step
     async def finalize_workflow(self, ev: ArticlesSummarized) -> StopEvent:
         print("📅 Synthèse des faits marquants du jour par thème :")
-
-        def split_message(text, max_length=4096):
-            """Divise un texte en morceaux compatibles avec la limite de caractères de Telegram."""
-            messages = []
-            while len(text) > max_length:
-                split_index = text[:max_length].rfind('\n')  # Couper proprement à la fin d'une ligne si possible
-                if split_index == -1:
-                    split_index = max_length  # Au pire, couper au maximum autorisé
-                messages.append(text[:split_index])
-                text = text[split_index:].strip()
-            if text:
-                messages.append(text)
-            return messages
-
         for cluster_name, summary in ev.summaries.items():
-            category, label = cluster_name.split(" - ", 1)
-            message = f"\n🌍 {category.capitalize()} : {label}\n{summary}"
-
-            for chunk in split_message(message):
-                try:
-                    # Utilise ton code d'envoi de message ici (ajuste en fonction de ton implémentation Telegram)
-                    send_telegram_message(chunk)
-                except Exception as e:
-                    print(f"❌ Erreur lors de l'envoi du message : {e}")
+            message = f"\n🌍 {cluster_name}\n{summary}"
+            send_telegram_message(message)
 
         return StopEvent(result="✅ Workflow terminé avec succès !")
 
 # Création du workflow
 def get_news_workflow(duration=1):
     return NewsProcessingWorkflow(duration=duration)
-
-#draw_all_possible_flows(NewsProcessingWorkflow, filename="NewsProcessingWorkflow.html")

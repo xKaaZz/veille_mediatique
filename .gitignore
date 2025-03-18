@@ -1,8 +1,3 @@
 
 .env
-__pycache__/database_manager.cpython-312.pyc
-__pycache__/news_processing_utils.cpython-312.pyc
-__pycache__/embedding_generator.cpython-312.pyc
-__pycache__/rss_scraper.cpython-312.pyc
-__pycache__/search_embeddings.cpython-312.pyc
-__pycache__/workflow.cpython-312.pyc
+**/__pycache__/
