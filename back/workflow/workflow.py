@@ -7,7 +7,6 @@ from llama_index.core.workflow import (
 )
 from back.core import DatabaseManager
 from back.ingestion.rss_scraper import RSSScraper
-from back.ingestion.pipeline import run_pipeline
 from back.core.news_processing_utils import summarize_cluster, generate_cluster_label, send_telegram_message
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from datetime import date, timedelta
@@ -51,14 +50,7 @@ class NewsProcessingWorkflow(Workflow):
         print(f"📌 Articles à indexer : {len(articles)}")
         return ArticlesScrapedAndIndexed(articles=articles)
 
-    """@step
-    async def index_articles(self, ev: ArticlesScraped) -> ArticlesIndexed:
-        print("🚀 Exécution du pipeline pour l'indexation avec embeddings...")
-        run_pipeline()  # 🔥 Utilisation du pipeline centralisé
-        articles = self.db_manager.get_articles()
-        return ArticlesIndexed(articles=articles)"""
     
-
     @step
     async def refine_article_categories(self, ev: ArticlesScrapedAndIndexed) -> ArticlesClustered:
         print(f"🧩 Vérification et ajustement des catégories pour les {self.duration} derniers jours...")
