@@ -1,80 +1,64 @@
-from database_manager import DatabaseManager
-from rss_scraper import RSSScraper
-from embedding_generator import EmbeddingGenerator
-from mongo_docstore import MongoDBDocStore
-import openai
-import pymongo
-import os
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.storage.docstore.mongodb import MongoDocumentStore
-from llama_index.storage.index_store.mongodb import MongoIndexStore
-from llama_index.vector_stores.mongodb import MongoDBAtlasVectorSearch
 from llama_index.core import Document
-from llama_index.core import SimpleDirectoryReader, StorageContext
+from llama_index.core.ingestion import IngestionPipeline
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.core import VectorStoreIndex
+from llama_index.vector_stores.mongodb import MongoDBAtlasVectorSearch
+from llama_index.storage.docstore.mongodb import MongoDocumentStore
+from database_manager import DatabaseManager
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-
-def get_mongo_client(mongo_uri):
-  """Establish connection to the MongoDB."""
-  try:
-    client = pymongo.MongoClient(mongo_uri)
-    print("Connection to MongoDB successful")
-    return client
-  except pymongo.errors.ConnectionFailure as e:
-    print(f"Connection failed: {e}")
-    return None
-
-
-uri=os.getenv("MONGO_URI")
-
-
+# Initialisation
 db_manager = DatabaseManager()
-scraper = RSSScraper(db_manager)
 
-mongo_client = get_mongo_client(uri)
-DB_NAME="news_database"
-COLLECTION_NAME="llama"
-db = mongo_client[os.getenv("MONGO_DB_NAME")]
+uri = os.getenv("MONGODB_URI")
+db_name = os.getenv("MONGO_DB_NAME")
+collection_name = os.getenv("MONGO_COLLECTION")
+
+docstore = MongoDocumentStore.from_uri(uri=uri)
+vector_store = MongoDBAtlasVectorSearch(
+    uri=uri, db_name=db_name, collection_name=collection_name, vector_index_name="vector_index"
+)
 
 embed_model = OpenAIEmbedding(model="text-embedding-ada-002")
 
-from llama_index.core.ingestion import IngestionPipeline
+# Pipeline d'ingestion avec SentenceSplitter, TitleExtractor et Embedding
+def run_pipeline():
+    print("📡 Chargement des articles...")
+    articles = db_manager.get_articles()
 
-articles = db_manager.get_articles()
-documents=[]
+    documents = [
+        Document(
+            text=article["content"],
+            metadata={
+                "link": article["link"],
+                "category": article["category"],
+                "description": article["description"],
+                "source": article["source"],
+                "title": article["title"]
+            },
+        )
+        for article in articles
+    ]
 
-for article in articles:
-    document = Document(
-    text=article["content"],
-    metadata={
-        "link": article["link"],
-        "category": article["category"],
-        "description": article["description"],
-        "source": article["source"],
-        "title": article["title"] 
-        },
+    pipeline = IngestionPipeline(
+        transformations=[
+            SentenceSplitter(chunk_size=500, chunk_overlap=0),
+            embed_model,
+        ],
+        vector_store=vector_store,
+        docstore=docstore
     )
-    documents.append(document)
 
-from llama_index.core.node_parser import SentenceSplitter
+    print("🚀 Lancement du pipeline avec SentenceSplitter, TitleExtractor et Embedding...")
+    pipeline.run(documents=documents)
+    print("✅ Pipeline exécuté avec succès !")
 
-parser = SentenceSplitter()
-docstore=MongoDocumentStore.from_uri(uri=uri),
-index_store=MongoIndexStore.from_uri(uri=uri),
+    # Création de l'index
+    index = VectorStoreIndex.from_vector_store(vector_store)
+    print("✅ Index créé avec succès !")
 
-storage_context = StorageContext.from_defaults(
-    docstore=docstore,
-    index_store=index_store,
-)
-vector_store = MongoDBAtlasVectorSearch(mongo_client, db_name=DB_NAME, collection_name=COLLECTION_NAME, vector_index_name="vector_index")
-
-pipeline = IngestionPipeline(
-    transformations=[
-        embed_model,
-        parser
-    ],
-   vector_store=vector_store,
-)
-
-
-
-pipeline.run(documents=documents)
+if __name__ == "__main__":
+    run_pipeline()

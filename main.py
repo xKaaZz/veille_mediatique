@@ -1,13 +1,12 @@
 import os
 import argparse  # ➤ Ajout pour gérer les arguments
-from dotenv import load_dotenv
 from database_manager import DatabaseManager
 from rss_scraper import RSSScraper
 from embedding_generator import EmbeddingGenerator
 import asyncio
 from workflow import NewsProcessingWorkflow  # ➤ Import mis à jour pour utiliser la classe avec durée
 from workflow import get_news_workflow
-
+from dotenv import load_dotenv
 load_dotenv()
 
 async def main(duration):

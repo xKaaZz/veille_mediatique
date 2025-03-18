@@ -10,6 +10,7 @@ from rss_scraper import RSSScraper
 from embedding_generator import EmbeddingGenerator
 from search_embeddings import SearchEmbeddings
 from news_processing_utils import summarize_cluster, generate_cluster_label, send_telegram_message
+from pipeline import run_pipeline
 from mongo_docstore import MongoDBDocStore
 from datetime import date
 import numpy as np
@@ -45,7 +46,7 @@ class NewsProcessingWorkflow(Workflow):
         self.db_manager = DatabaseManager()
         self.scraper = RSSScraper(self.db_manager)
         self.docstore = MongoDBDocStore(
-            uri=os.getenv("MONGO_URI"),
+            uri=os.getenv("MONGODB_URI"),
             db_name=os.getenv("MONGO_DB_NAME"),
             collection_name=os.getenv("MONGO_COLLECTION")
         )
@@ -70,7 +71,7 @@ class NewsProcessingWorkflow(Workflow):
         print(f"📌 Articles à indexer : {len(articles)}")
         return ArticlesScraped(articles=articles)
 
-    @step
+    """@step
     async def index_articles(self, ev: ArticlesScraped) -> ArticlesIndexed:
         print("🔍 Génération des embeddings...")
 
@@ -89,6 +90,16 @@ class NewsProcessingWorkflow(Workflow):
 
         updated_articles = self.docstore.get_all_documents()
         return ArticlesIndexed(articles=updated_articles)
+    """
+
+    @step
+    async def index_articles(self, ev: ArticlesScraped) -> ArticlesIndexed:
+        print("🚀 Exécution du pipeline pour scraping + embeddings...")
+        run_pipeline()  # 🔥 Utilisation du pipeline centralisé
+
+        updated_articles = self.docstore.get_all_documents()
+        return ArticlesIndexed(articles=updated_articles)
+
 
     @step
     async def refine_article_categories(self, ev: ArticlesIndexed) -> ArticlesClustered:
