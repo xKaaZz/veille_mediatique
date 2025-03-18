@@ -1,0 +1,70 @@
+body {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #f0f2f5; /* Fond gris clair pour un look moderne */
+  font-family: 'Arial', sans-serif;
+}
+
+#root {
+  width: 100%;
+  max-width: 800px; /* Augmenter la largeur pour un rendu plus large */
+  background-color: #ffffff;
+  border: 2px solid #e5e7eb;
+  border-radius: 16px; /* Coins plus arrondis */
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1); /* Ombre douce */
+  padding: 3rem;
+  text-align: center;
+}
+
+/* Titre principal */
+h1 {
+  font-size: 2.5rem;
+  color: #213547;
+  margin-bottom: 1.5rem;
+}
+
+/* Sous-titres */
+h2 {
+  font-size: 1.5rem;
+  color: #4a4a4a;
+}
+
+/* Cartes */
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Boutons */
+button {
+  background-color: #4CAF50; /* Vert agréable */
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+
+/* Inputs */
+input[type="date"] {
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 12px;
+  width: 100%;
+  max-width: 150px;
+  background-color: #fff;
+}
+
+/* Amélioration des icônes dans les boutons */
+button span {
+  margin-right: 8px;
+}

@@ -22,6 +22,15 @@ from datetime import date, timedelta
 
 load_dotenv()
 
+MAX_TOKENS = 8000  # Pour garder une marge de sécurité
+
+def truncate_text(text, max_tokens=MAX_TOKENS):
+    tokens = text.split()
+    if len(tokens) > max_tokens:
+        print(f"⚠️ Texte tronqué à {max_tokens} tokens")
+        return " ".join(tokens[:max_tokens])
+    return text
+
 # Définition des événements
 class ArticlesScraped(Event):
     articles: list
@@ -82,7 +91,9 @@ class NewsProcessingWorkflow(Workflow):
         print(f"📌 Articles nécessitant un embedding : {len(articles_to_update)}")
 
         for article in articles_to_update:
-            text = f"{article['title']} {article.get('content', '')}"
+            title = article.get('title', 'Titre inconnu')
+            content = article.get('content', '')
+            text = truncate_text(f"{title} {content}")
             embedding = self.embedder.generate_embedding(text)
             if embedding:
                 self.docstore.update_document(article["_id"], {"content_vector": embedding})
